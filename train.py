@@ -5,22 +5,25 @@ import swanlab
 import torch
 from transformers import AutoTokenizer
 
-from config import CONFIG
+from config import parse_config
 from data import build_loader, load_label_mapping
 from engine import evaluate_epoch, train_epoch
 from model import BertClassifier
 from tracking import config_to_dict, init_swanlab, log_metrics
+
 
 def set_seed(seed):
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+
 def main():
-    args = CONFIG
+    args = parse_config()
     set_seed(args.seed)
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    args.model_cache.mkdir(parents=True, exist_ok=True)
+    if args.model_cache is not None:
+        args.model_cache.mkdir(parents=True, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -116,6 +119,7 @@ def main():
         json.dump(results, file, ensure_ascii=False, indent=2)
 
     swanlab.finish()
+
 
 if __name__ == "__main__":
     main()
