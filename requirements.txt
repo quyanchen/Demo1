@@ -1,0 +1,5 @@
+torch==2.3.0
+transformers==4.45.2
+scikit-learn==1.7.2
+swanlab==0.8.3
+tqdm==4.67.1

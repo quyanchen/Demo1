@@ -1,25 +1,57 @@
-## No keywords
+# Demo1
 
-Epoch 1/5 | Train Loss: 1.3425 | Train Acc: 0.6207 | Dev Loss: 0.6406 | Dev Acc: 0.8150  
-Best checkpoint saved to checkpoints/best_model.pt  
-Epoch 2/5 | Train Loss: 0.4765 | Train Acc: 0.8620 | Dev Loss: 0.6213 | Dev Acc: 0.8290  
-Best checkpoint saved to checkpoints/best_model.pt  
-Epoch 3/5 | Train Loss: 0.2582 | Train Acc: 0.9273 | Dev Loss: 0.6169 | Dev Acc: 0.8350  
-Best checkpoint saved to checkpoints/best_model.pt  
-Epoch 4/5 | Train Loss: 0.1422 | Train Acc: 0.9647 | Dev Loss: 0.6773 | Dev Acc: 0.8250  
-Epoch 5/5 | Train Loss: 0.0808 | Train Acc: 0.9797 | Dev Loss: 0.6896 | Dev Acc: 0.8400  
-Best checkpoint saved to checkpoints/best_model.pt  
-Best Epoch: 5 | Best Dev Acc: 0.8400 | Test Loss: 0.7306 | Test Acc: 0.8346  
+A simple PyTorch implementation of Chinese news classification using [`bert-base-chinese`](https://huggingface.co/google-bert/bert-base-chinese). The code includes data preprocessing, a custom classification head, training and evaluation loops, checkpoint selection, and SwanLab logging.
 
-## Using Keywords
+The dataset is a 15-class subset of the [Toutiao text classification dataset](https://github.com/aceimnorstuvwxz/toutiao-text-classfication-dataset), with 3,000 training examples, 1,000 development examples, and 1,064 test examples.
 
-Epoch 1/5 | Train Loss: 1.1733 | Train Acc: 0.6707 | Dev Loss: 0.5426 | Dev Acc: 0.8470  
-Best checkpoint saved to checkpoints/best_model.pt  
-Epoch 2/5 | Train Loss: 0.4056 | Train Acc: 0.8860 | Dev Loss: 0.5149 | Dev Acc: 0.8510  
-Best checkpoint saved to checkpoints/best_model.pt  
-Epoch 3/5 | Train Loss: 0.2245 | Train Acc: 0.9403 | Dev Loss: 0.4919 | Dev Acc: 0.8620  
-Best checkpoint saved to checkpoints/best_model.pt  
-Epoch 4/5 | Train Loss: 0.1286 | Train Acc: 0.9660 | Dev Loss: 0.5067 | Dev Acc: 0.8730  
-Best checkpoint saved to checkpoints/best_model.pt  
-Epoch 5/5 | Train Loss: 0.0650 | Train Acc: 0.9850 | Dev Loss: 0.5597 | Dev Acc: 0.8650  
-Best Epoch: 4 | Best Dev Acc: 0.8730 | Test Loss: 0.5564 | Test Acc: 0.8543  
+## Results
+
+| Split | Accuracy | Macro-F1 |
+|---|---:|---:|
+| Dev | 84.10% | 82.84% |
+| Test | 81.86% | 79.50% |
+
+The baseline uses seed 42, batch size 32, learning rate `2e-5`, maximum length 64, and five training epochs. The best checkpoint is selected by development accuracy.
+
+## Usage
+
+Install the dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+The processed data is already included. To rebuild it from the raw files:
+
+```bash
+python prepare_data.py
+```
+
+Train and evaluate the model:
+
+```bash
+python train.py
+python evaluate.py
+```
+
+Run the tests:
+
+```bash
+python -m unittest discover -v
+```
+
+Hyperparameters and paths are defined in `config.py`. Model files are stored in `D:\1Code\1Model\huggingface` by default; set `DEMO1_MODEL_CACHE` to use another directory. Training outputs are written to `outputs/baseline/`, including `best.pt`, `metrics.json`, and SwanLab logs.
+
+## Files
+
+```text
+prepare_data.py   Data conversion
+data.py           Dataset and data loaders
+model.py          BERT classifier
+engine.py         Training and evaluation loops
+train.py          Training entry point
+evaluate.py       Evaluation entry point
+tracking.py       SwanLab logging
+config.py         Experiment settings
+tests/            Unit tests
+```
