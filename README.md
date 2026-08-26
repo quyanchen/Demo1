@@ -53,5 +53,4 @@ train.py          Training entry point
 evaluate.py       Evaluation entry point
 tracking.py       SwanLab logging
 config.py         Experiment settings
-tests/            Unit tests
 ```
