@@ -34,7 +34,13 @@ python train.py
 python evaluate.py
 ```
 
-Hyperparameters and paths are defined in `config.py`. Model files are stored in `D:\1Code\1Model\huggingface` by default; set `DEMO1_MODEL_CACHE` to use another directory. Training outputs are written to `outputs/baseline/`, including `best.pt`, `metrics.json`, and SwanLab logs.
+Default settings are defined in `config.py` and can be overridden from the command line, for example:
+
+```bash
+python train.py --learning-rate 3e-5 --batch-size 16 --epochs 3
+```
+
+Hugging Face uses its default cache directory unless `--model-cache` or the `DEMO1_MODEL_CACHE` environment variable is specified. Training outputs are written to `outputs/baseline/`, including `best.pt`, `metrics.json`, and SwanLab logs.
 
 ## Files
 
