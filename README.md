@@ -34,12 +34,6 @@ python train.py
 python evaluate.py
 ```
 
-Run the tests:
-
-```bash
-python -m unittest discover -v
-```
-
 Hyperparameters and paths are defined in `config.py`. Model files are stored in `D:\1Code\1Model\huggingface` by default; set `DEMO1_MODEL_CACHE` to use another directory. Training outputs are written to `outputs/baseline/`, including `best.pt`, `metrics.json`, and SwanLab logs.
 
 ## Files
