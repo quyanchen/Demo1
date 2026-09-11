@@ -1,54 +1,116 @@
+import argparse
 import json
+from collections import Counter
+from itertools import combinations
+from pathlib import Path
 
-from config import CONFIG
+from config import CONFIG, RAW_DATA_DIR
 
-SPLITS = {
-    "train_3k.txt": "train_3k.jsonl",
-    "dev_1k.txt": "dev_1k.jsonl",
-    "test_1k.txt": "test_1k.jsonl",
-}
 
-def parse_line(line):
-    article_id, label_id, category, text, keywords = line.rstrip("\n").split("_!_", 4)
-    return {"id": article_id, "label_id": label_id, "category": category, "text": text, "keywords": keywords}
+REQUIRED_FIELDS = ("id", "label_id", "category", "text", "keywords")
 
-def convert_file(source, destination):
-    count, labels = 0, set()
-    with source.open(encoding="utf-8") as input_file, destination.open(
-        "w", encoding="utf-8", newline="\n"
-    ) as output_file:
-        for line in input_file:
-            record = parse_line(line)
-            labels.add(record["label_id"])
-            output_file.write(json.dumps(record, ensure_ascii=False) + "\n")
-            count += 1
-    return count, labels
 
-def main():
-    target_dirs = [CONFIG.rebuilt_data_dir, CONFIG.data_dir]
-    for d in target_dirs:
-        d.mkdir(parents=True, exist_ok=True)
+def validate_record(record: dict) -> None:
+    if not isinstance(record, dict) or any(not isinstance(record.get(k), str) for k in REQUIRED_FIELDS):
+        raise ValueError("Expected string fields: id, label_id, category, text, keywords")
+    if any(not record[k].strip() for k in ("id", "label_id", "category", "text")):
+        raise ValueError("id, label_id, category and text must not be blank")
 
-    train_labels = None
-    for source_name, destination_name in SPLITS.items():
-        count, labels = convert_file(
-            CONFIG.raw_data_dir / source_name,
-            CONFIG.rebuilt_data_dir / destination_name,
+
+def parse_line(line: str) -> dict[str, str]:
+    parts = line.rstrip("\r\n").split("_!_", 4)
+    if len(parts) != 5:
+        raise ValueError("Expected five '_!_'-separated fields")
+    record = dict(zip(REQUIRED_FIELDS, parts))
+    validate_record(record)
+    return record
+
+
+def validate_mapping(mapping: dict) -> None:
+    if not mapping or any(not isinstance(k, str) or not k for k in mapping):
+        raise ValueError("Label mapping requires nonempty string labels")
+    if any(type(v) is not int for v in mapping.values()):
+        raise ValueError("Label indices must be integers")
+    if sorted(mapping.values()) != list(range(len(mapping))):
+        raise ValueError("Label indices must be unique and continuous from zero")
+
+
+def audit(splits: dict[str, list[dict]]) -> dict:
+    # 查测试集
+    report = {"splits": {}, "overlap": {}}
+    for name, records in splits.items():
+        report["splits"][name] = {
+            "rows": len(records),
+            "class_counts": dict(sorted(Counter(r["label_id"] for r in records).items())),
+            "duplicate_id_rows": len(records) - len({r["id"] for r in records}),
+            "duplicate_title_rows": len(records) - len({r["text"] for r in records}),
+        }
+    for first, second in combinations(splits, 2):
+        titles = {r["text"] for r in splits[first]} & {r["text"] for r in splits[second]}
+        report["overlap"][f"{first}-{second}"] = {
+            "shared_ids": len({r["id"] for r in splits[first]} & {r["id"] for r in splits[second]}),
+            "shared_titles": len(titles),
+            "affected_second_rows": sum(r["text"] in titles for r in splits[second]),
+        }
+    return report
+
+
+def prepare(raw_files: dict[str, Path], data_dir: Path) -> dict:
+
+    splits = {}
+    for split, path in raw_files.items():
+        records = []
+        with path.open(encoding="utf-8") as stream:
+            for number, line in enumerate(stream, 1):
+                try:
+                    records.append(parse_line(line))
+                except ValueError as error:
+                    raise ValueError(f"{path}:{number}: {error}")
+        if not records:
+            raise ValueError(f"{path}: dataset is empty")
+        splits[split] = records
+
+    # 仅根据训练集建立全局统一的标签索引，确保训练与评测口径对齐
+    labels = sorted({record["label_id"] for record in splits["train"]})
+    mapping = {label: index for index, label in enumerate(labels)}
+    validate_mapping(mapping)
+    for split, records in splits.items():
+        unknown = {record["label_id"] for record in records} - mapping.keys()
+        if unknown:
+            raise ValueError(f"{split}: labels absent from training: {sorted(unknown)}")
+
+    audit_report = audit(splits)
+    data_dir = Path(data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    for split, records in splits.items():
+        payload = "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in records)
+        (data_dir / f"{split}.jsonl").write_text(payload, encoding="utf-8")
+    for name, content in {
+        "label2id.json": mapping,
+        "id2label.json": {index: label for label, index in mapping.items()},
+        "audit.json": audit_report,
+    }.items():
+        (data_dir / name).write_text(
+            json.dumps(content, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
-        if "train" in source_name:
-            train_labels = sorted(list(labels))
-        print(f"{destination_name}: {count} rows, {len(labels)} unique labels")
+    return audit_report
 
-    label2id = {label: idx for idx, label in enumerate(train_labels)}
-    id2label = {idx: label for label, idx in label2id.items()}
 
-    for d in target_dirs:
-        with (d / "label2id.json").open("w", encoding="utf-8") as f:
-            json.dump(label2id, f, ensure_ascii=False, indent=2)
-        with (d / "id2label.json").open("w", encoding="utf-8") as f:
-            json.dump(id2label, f, ensure_ascii=False, indent=2)
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Prepare the canonical Toutiao splits and data audit.")
+    parser.add_argument("--raw-dir", type=Path, default=RAW_DATA_DIR)
+    parser.add_argument("--data-dir", type=Path, default=CONFIG.data_dir)
+    args = parser.parse_args(argv)
+    raw_files = {
+        "train": args.raw_dir / "train_3k.txt",
+        "dev": args.raw_dir / "dev_1k.txt",
+        "test": args.raw_dir / "test_1k.txt",
+    }
+    audit_report = prepare(raw_files, args.data_dir)
+    print(json.dumps(audit_report, ensure_ascii=False, indent=2))
+    return audit_report
 
-    print(f"Saved label mappings ({len(label2id)} classes) to target directories.")
 
 if __name__ == "__main__":
     main()
+
