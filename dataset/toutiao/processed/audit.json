@@ -1,0 +1,87 @@
+{
+  "splits": {
+    "train": {
+      "rows": 3000,
+      "class_counts": {
+        "100": 49,
+        "101": 217,
+        "102": 305,
+        "103": 291,
+        "104": 210,
+        "106": 137,
+        "107": 277,
+        "108": 209,
+        "109": 322,
+        "110": 193,
+        "112": 166,
+        "113": 208,
+        "114": 40,
+        "115": 149,
+        "116": 227
+      },
+      "duplicate_id_rows": 0,
+      "duplicate_title_rows": 63
+    },
+    "dev": {
+      "rows": 1000,
+      "class_counts": {
+        "100": 16,
+        "101": 72,
+        "102": 102,
+        "103": 97,
+        "104": 70,
+        "106": 45,
+        "107": 92,
+        "108": 70,
+        "109": 107,
+        "110": 64,
+        "112": 55,
+        "113": 70,
+        "114": 14,
+        "115": 50,
+        "116": 76
+      },
+      "duplicate_id_rows": 0,
+      "duplicate_title_rows": 16
+    },
+    "test": {
+      "rows": 1064,
+      "class_counts": {
+        "100": 17,
+        "101": 77,
+        "102": 108,
+        "103": 103,
+        "104": 74,
+        "106": 49,
+        "107": 99,
+        "108": 74,
+        "109": 114,
+        "110": 69,
+        "112": 59,
+        "113": 74,
+        "114": 14,
+        "115": 53,
+        "116": 80
+      },
+      "duplicate_id_rows": 0,
+      "duplicate_title_rows": 11
+    }
+  },
+  "overlap": {
+    "train-dev": {
+      "shared_ids": 0,
+      "shared_titles": 28,
+      "affected_second_rows": 40
+    },
+    "train-test": {
+      "shared_ids": 0,
+      "shared_titles": 31,
+      "affected_second_rows": 40
+    },
+    "dev-test": {
+      "shared_ids": 0,
+      "shared_titles": 18,
+      "affected_second_rows": 24
+    }
+  }
+}
