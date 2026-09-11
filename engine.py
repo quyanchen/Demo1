@@ -1,49 +1,52 @@
 import torch
-from sklearn.metrics import accuracy_score, f1_score
 from torch.nn import functional as F
 from tqdm import tqdm
 
+from metrics import ClassificationMetric
+
+
 def train_epoch(model, loader, optimizer, device, global_step=0, log_step=None):
     model.train()
-    total_loss = 0.0
-
+    total_loss, sample_count = 0.0, 0
     for batch in tqdm(loader, desc="Training", leave=False):
-        labels = batch["labels"].to(device)
-        inputs = {k: v.to(device) for k, v in batch.items() if k != "labels"}
-
-        optimizer.zero_grad()
-        logits = model(**inputs)
-        loss = F.cross_entropy(logits, labels)
+        labels = batch.pop("labels").to(device)
+        inputs = {k: v.to(device) for k, v in batch.items()}
+        optimizer.zero_grad(set_to_none=True)
+        loss = F.cross_entropy(model(**inputs), labels)
         loss.backward()
         optimizer.step()
 
-        total_loss += loss.item() * labels.size(0)
-        if log_step:
-            log_step({"train/loss": loss.item(), "train/lr": optimizer.param_groups[0]["lr"]}, global_step)
+        # 按实际 batch 样本数累计 loss，避免非整除末尾批次被错误赋权
+        batch_size = labels.size(0)
+        sample_count += batch_size
+        total_loss += loss.item() * batch_size
         global_step += 1
 
-    return total_loss / len(loader.dataset), global_step
+        if log_step is not None:
+            log_step({"train/loss": loss.item(), "train/lr": optimizer.param_groups[0]["lr"]}, global_step)
+
+    if sample_count == 0:
+        raise ValueError("Training loader produced no samples")
+    return total_loss / sample_count, global_step
+
 
 @torch.no_grad()
 def evaluate_epoch(model, loader, device, description="Evaluating"):
     model.eval()
-    total_loss = 0.0
-    all_labels, all_preds = [], []
-
+    metric = ClassificationMetric(model.config.num_labels)
+    total_loss, sample_count = 0.0, 0
     for batch in tqdm(loader, desc=description, leave=False):
-        labels = batch["labels"].to(device)
-        inputs = {k: v.to(device) for k, v in batch.items() if k != "labels"}
-
+        labels = batch.pop("labels").to(device)
+        inputs = {k: v.to(device) for k, v in batch.items()}
         logits = model(**inputs)
         loss = F.cross_entropy(logits, labels)
-        preds = logits.argmax(dim=-1)
 
-        total_loss += loss.item() * labels.size(0)
-        all_labels.extend(labels.cpu().tolist())
-        all_preds.extend(preds.cpu().tolist())
+        batch_size = labels.size(0)
+        sample_count += batch_size
+        total_loss += loss.item() * batch_size
+        metric.update(logits.argmax(dim=-1), labels)
 
-    return {
-        "loss": total_loss / len(loader.dataset),
-        "accuracy": accuracy_score(all_labels, all_preds),
-        "macro_f1": f1_score(all_labels, all_preds, average="macro"),
-    }
+    if sample_count == 0:
+        raise ValueError("Evaluation loader produced no samples")
+    return {"loss": total_loss / sample_count, **metric.compute()}
+
