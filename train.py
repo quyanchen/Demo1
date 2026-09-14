@@ -1,6 +1,4 @@
 import argparse
-import math
-import random
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -11,8 +9,8 @@ from transformers import BertConfig, BertTokenizerFast
 
 from config import CONFIG, ExperimentConfig
 from data import ToutiaoDataset
-from engine import evaluate_epoch, train_epoch
 from model import BertClassifier
+from trainer import ClassificationTrainer, evaluate_model
 from utils import (
     config_to_dict, environment_info, file_sha256, finish_swanlab,
     init_swanlab, log_metrics, set_seed, write_json,
@@ -102,50 +100,19 @@ def run_experiment(config: ExperimentConfig) -> Path:
         optimizer = torch.optim.AdamW(
             model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay,
         )
-        # 训练与验证循环
-        best_score, best_epoch, best_dev = None, 0, None
-        global_step, stale_epochs = 0, 0
-        history = []
-        stop_reason = "max_epochs"
-
-        def log_step(values, step):
-            if run is not None:
-                run.log(values, step=step)
-
-        for epoch in range(1, config.epochs + 1):
-            train_loss, global_step = train_epoch(
-                model, train_loader, optimizer, device, global_step, log_step,
-            )
-            dev_metrics = evaluate_epoch(model, dev_loader, device, description="Dev Eval")
-            score = dev_metrics["macro_f1"]
-            if not math.isfinite(score) or not 0 <= score <= 1:
-                raise ValueError(f"Invalid development macro_f1: {score}")
-            if best_score is None or score > best_score:
-                best_score, best_epoch, best_dev = score, epoch, dev_metrics
-                stale_epochs = 0
-                model.save_pretrained(model_dir)
-                tokenizer.save_pretrained(model_dir)
-            else:
-                stale_epochs += 1
-
-            history.append({"epoch": epoch, "global_step": global_step, "train_loss": train_loss, "dev": dev_metrics})
-            write_json(output_dir / "history.json", {"epochs": history})
-            log_metrics(run, "train", {"epoch_loss": train_loss, "epoch": epoch}, global_step)
-            log_metrics(run, "dev", dev_metrics, global_step)
-            print(f"Epoch {epoch}: loss={train_loss:.4f}, dev accuracy={dev_metrics['accuracy']:.4f}, macro-F1={score:.4f}")
-            if config.patience and stale_epochs >= config.patience:
-                stop_reason = "early_stopping"
-                break
-
-        if best_dev is None:
-            raise ValueError("No development checkpoint was selected")
-
-        results = {
-            "best_epoch": best_epoch, "epochs_completed": len(history),
-            "stop_reason": stop_reason, "global_step": global_step, "dev": best_dev,
-        }
+        trainer = ClassificationTrainer(
+            model=model,
+            optimizer=optimizer,
+            device=device,
+            config=config,
+            output_dir=output_dir,
+            model_dir=model_dir,
+            tokenizer=tokenizer,
+            run=run,
+        )
+        results = trainer.fit(train_loader, dev_loader)
         # 释放训练期占用的优化器状态与模型权重，防显存碎片
-        del optimizer, model
+        del trainer, optimizer, model
         best_model = BertClassifier.from_pretrained(model_dir, local_files_only=True).to(device)
         best_tokenizer = BertTokenizerFast.from_pretrained(model_dir, local_files_only=True)
         test_path = config.data_dir / "test.jsonl"
@@ -160,7 +127,7 @@ def run_experiment(config: ExperimentConfig) -> Path:
             test_dataset, batch_size=config.batch_size, shuffle=False,
             num_workers=config.num_workers, collate_fn=test_dataset.collate_fn,
         )
-        results["test"] = evaluate_epoch(best_model, test_loader, device, description="Test Eval")
+        results["test"] = evaluate_model(best_model, test_loader, device, description="Test Eval")
         results["label_to_index"] = best_model.config.label2id
         log_metrics(run, "test", results["test"], results["global_step"])
         write_json(output_dir / "metrics.json", results)
