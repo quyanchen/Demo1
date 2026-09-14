@@ -11,8 +11,8 @@ from torch.utils.data import DataLoader
 from transformers import BertTokenizerFast
 
 from data import ToutiaoDataset
-from engine import evaluate_epoch
 from model import BertClassifier
+from trainer import evaluate_model
 from utils import file_sha256, write_json
 
 
@@ -39,7 +39,7 @@ def evaluate_run(run_dir: Path, data_file: Path | None = None,
     loader = DataLoader(
         dataset, batch_size=batch_size, shuffle=False, collate_fn=dataset.collate_fn,
     )
-    metrics = evaluate_epoch(model, loader, selected_device, description="Test Eval")
+    metrics = evaluate_model(model, loader, selected_device, description="Test Eval")
     fingerprint = file_sha256(path)
     expected = saved["data_sha256"].get("test.jsonl") if data_file is None else None
     report = {
