@@ -8,10 +8,11 @@ This repository provides a clean, modular PyTorch implementation of Chinese text
 
 
 本次核心架构重构与优化如下：
-- **Units**：将`tracking.py`更名`units.py`原 `train.py` 局部的 `set_seed` 以及原 `tracking.py` 中的原子写 JSON、文件 SHA-256 校验、环境探测、SwanLab 跟踪函数统一收拢至 `utils.py`。
+- **Units**：将`tracking.py`更名`utils.py`原 `train.py` 局部的 `set_seed` 以及原 `tracking.py` 中的原子写 JSON、文件 SHA-256 校验、环境探测、SwanLab 跟踪函数统一收拢至 `utils.py`。
 - **Train**：删除冗余的 `fit` 函数，在 `run_experiment` 内部将 Epoch 训练/验证循环、模型保存与早停检测自上而下线性展开。
 
-然后我改完发现，这个 `run_experiment` 太臃肿了。我就建了一个 `trainer.py`, 删了 `engine.py`, 把训练循环、早停、checkpoint、算步数和日志，打包进了 ClassificationTrainer。
+然后我改完发现，这个 `run_experiment` 太臃肿了。我就建了一个 `trainer.py`, 删了 `engine.py`, 把训练循环、早停、checkpoint、算步数和日志，打包进了 ClassificationTrainer。  
+
 ---
 
 ## Project Structure
@@ -31,7 +32,6 @@ This repository provides a clean, modular PyTorch implementation of Chinese text
 │   └── toutiao/
 │       ├── raw/        # Raw split files (train_3k.txt, dev_1k.txt, test_1k.txt)
 │       └── processed/  # Processed JSONL files, mappings, and audit report
-├── tests/              # Comprehensive regression test suite
 ├── requirements.txt    # Environment dependencies
 └── README.md
 ```
