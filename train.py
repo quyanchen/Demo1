@@ -5,25 +5,18 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-from config import CONFIG, ROOT, ExperimentConfig
-
 import torch
 from torch.utils.data import DataLoader
 from transformers import BertConfig, BertTokenizerFast
 
+from config import CONFIG, ExperimentConfig
 from data import ToutiaoDataset
 from engine import evaluate_epoch, train_epoch
 from model import BertClassifier
-from tracking import (
+from utils import (
     config_to_dict, environment_info, file_sha256, finish_swanlab,
-    init_swanlab, log_metrics, write_json,
+    init_swanlab, log_metrics, set_seed, write_json,
 )
-
-
-def set_seed(seed: int) -> None:
-    random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
 
 
 def create_run(config: ExperimentConfig) -> tuple[Path, Path]:
@@ -33,50 +26,6 @@ def create_run(config: ExperimentConfig) -> tuple[Path, Path]:
     model_dir = config.model_output_root / run_id
     output_dir.mkdir(parents=True, exist_ok=False)
     return output_dir, model_dir
-
-
-def fit(model, tokenizer, train_loader, dev_loader, optimizer, device, config,
-        output_dir: Path, model_dir: Path, run=None) -> dict:
-    best_score, best_epoch, best_dev = None, 0, None
-    global_step, stale_epochs = 0, 0
-    history = []
-    stop_reason = "max_epochs"
-
-    def log_step(values, step):
-        if run is not None:
-            run.log(values, step=step)
-
-    for epoch in range(1, config.epochs + 1):
-        train_loss, global_step = train_epoch(
-            model, train_loader, optimizer, device, global_step, log_step,
-        )
-        dev_metrics = evaluate_epoch(model, dev_loader, device, description="Dev Eval")
-        score = dev_metrics["macro_f1"]
-        if not math.isfinite(score) or not 0 <= score <= 1:
-            raise ValueError(f"Invalid development macro_f1: {score}")
-        if best_score is None or score > best_score:
-            best_score, best_epoch, best_dev = score, epoch, dev_metrics
-            stale_epochs = 0
-            model.save_pretrained(model_dir)
-            tokenizer.save_pretrained(model_dir)
-        else:
-            stale_epochs += 1
-
-        history.append({"epoch": epoch, "global_step": global_step, "train_loss": train_loss, "dev": dev_metrics})
-        write_json(output_dir / "history.json", {"epochs": history})
-        log_metrics(run, "train", {"epoch_loss": train_loss, "epoch": epoch}, global_step)
-        log_metrics(run, "dev", dev_metrics, global_step)
-        print(f"Epoch {epoch}: loss={train_loss:.4f}, dev accuracy={dev_metrics['accuracy']:.4f}, macro-F1={score:.4f}")
-        if config.patience and stale_epochs >= config.patience:
-            stop_reason = "early_stopping"
-            break
-
-    if best_dev is None:
-        raise ValueError("No development checkpoint was selected")
-    return {
-        "best_epoch": best_epoch, "epochs_completed": len(history),
-        "stop_reason": stop_reason, "global_step": global_step, "dev": best_dev,
-    }
 
 
 def run_experiment(config: ExperimentConfig) -> Path:
@@ -153,10 +102,48 @@ def run_experiment(config: ExperimentConfig) -> Path:
         optimizer = torch.optim.AdamW(
             model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay,
         )
-        results = fit(
-            model, tokenizer, train_loader, dev_loader, optimizer, device,
-            config, output_dir, model_dir, run,
-        )
+        # 训练与验证循环
+        best_score, best_epoch, best_dev = None, 0, None
+        global_step, stale_epochs = 0, 0
+        history = []
+        stop_reason = "max_epochs"
+
+        def log_step(values, step):
+            if run is not None:
+                run.log(values, step=step)
+
+        for epoch in range(1, config.epochs + 1):
+            train_loss, global_step = train_epoch(
+                model, train_loader, optimizer, device, global_step, log_step,
+            )
+            dev_metrics = evaluate_epoch(model, dev_loader, device, description="Dev Eval")
+            score = dev_metrics["macro_f1"]
+            if not math.isfinite(score) or not 0 <= score <= 1:
+                raise ValueError(f"Invalid development macro_f1: {score}")
+            if best_score is None or score > best_score:
+                best_score, best_epoch, best_dev = score, epoch, dev_metrics
+                stale_epochs = 0
+                model.save_pretrained(model_dir)
+                tokenizer.save_pretrained(model_dir)
+            else:
+                stale_epochs += 1
+
+            history.append({"epoch": epoch, "global_step": global_step, "train_loss": train_loss, "dev": dev_metrics})
+            write_json(output_dir / "history.json", {"epochs": history})
+            log_metrics(run, "train", {"epoch_loss": train_loss, "epoch": epoch}, global_step)
+            log_metrics(run, "dev", dev_metrics, global_step)
+            print(f"Epoch {epoch}: loss={train_loss:.4f}, dev accuracy={dev_metrics['accuracy']:.4f}, macro-F1={score:.4f}")
+            if config.patience and stale_epochs >= config.patience:
+                stop_reason = "early_stopping"
+                break
+
+        if best_dev is None:
+            raise ValueError("No development checkpoint was selected")
+
+        results = {
+            "best_epoch": best_epoch, "epochs_completed": len(history),
+            "stop_reason": stop_reason, "global_step": global_step, "dev": best_dev,
+        }
         # 释放训练期占用的优化器状态与模型权重，防显存碎片
         del optimizer, model
         best_model = BertClassifier.from_pretrained(model_dir, local_files_only=True).to(device)
@@ -179,6 +166,7 @@ def run_experiment(config: ExperimentConfig) -> Path:
         write_json(output_dir / "metrics.json", results)
         write_json(output_dir / "status.json", {"status": "complete"})
         print(f"Run: {output_dir}\nModel: {model_dir}\nTest accuracy: {results['test']['accuracy']:.4f}")
+        del best_model, best_tokenizer
         return output_dir
     except BaseException as error:
         write_json(output_dir / "status.json", {"status": "failed", "error": f"{type(error).__name__}: {error}"})
