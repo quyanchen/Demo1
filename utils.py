@@ -3,19 +3,26 @@ import importlib.metadata
 import importlib.util
 import json
 import platform
+import random
 from dataclasses import asdict
 from pathlib import Path
 
+import torch
+
+
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
 
 def write_json(path: Path, payload: dict) -> None:
-    """原子写入 JSON 文件，避免进程被中断时残留损坏文件。"""
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     temporary.replace(path)
-
 
 
 def config_to_dict(config) -> dict:
@@ -46,8 +53,11 @@ def init_swanlab(config: dict, output_dir: Path):
     import swanlab
 
     return swanlab.init(
-        project=config["swanlab_project"], name=config["run_id"], config=config,
-        log_dir=str(output_dir / "swanlog"), mode=config["swanlab_mode"],
+        project=config["swanlab_project"],
+        name=config["run_id"],
+        config=config,
+        log_dir=str(output_dir / "swanlog"),
+        mode=config["swanlab_mode"],
     )
 
 
