@@ -13,7 +13,7 @@ from transformers import BertTokenizerFast
 from data import ToutiaoDataset
 from engine import evaluate_epoch
 from model import BertClassifier
-from tracking import file_sha256, write_json
+from utils import file_sha256, write_json
 
 
 def evaluate_run(run_dir: Path, data_file: Path | None = None,
