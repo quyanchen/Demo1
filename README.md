@@ -11,6 +11,7 @@ This repository provides a clean, modular PyTorch implementation of Chinese text
 - **Units**：将`tracking.py`更名`units.py`原 `train.py` 局部的 `set_seed` 以及原 `tracking.py` 中的原子写 JSON、文件 SHA-256 校验、环境探测、SwanLab 跟踪函数统一收拢至 `utils.py`。
 - **Train**：删除冗余的 `fit` 函数，在 `run_experiment` 内部将 Epoch 训练/验证循环、模型保存与早停检测自上而下线性展开。
 
+然后我改完发现，这个 `run_experiment` 太臃肿了。我就建了一个 `trainer.py`, 删了 `engine.py`, 把训练循环、早停、checkpoint、算步数和日志，打包进了 ClassificationTrainer。
 ---
 
 ## Project Structure
@@ -21,8 +22,8 @@ This repository provides a clean, modular PyTorch implementation of Chinese text
 ├── data.py             # ToutiaoDataset and custom dynamic-padding collate_fn
 ├── model.py            # BertClassifier inheriting from BertPreTrainedModel
 ├── metrics.py          # ClassificationMetric with bincount-based confusion matrix & Macro-F1
-├── engine.py           # train_epoch and evaluate_epoch routines
-├── train.py            # Training orchestration, early stopping, and test inference
+├── trainer.py          # ClassificationTrainer and evaluate_model routines
+├── train.py            # Experiment orchestration and run assembly
 ├── evaluate.py         # Standalone offline evaluation entry point
 ├── prepare_data.py     # Raw text parsing, label mapping, and data leakage audit
 ├── utils.py            # Random seed, atomic JSON persistence, and SwanLab experiment logging
